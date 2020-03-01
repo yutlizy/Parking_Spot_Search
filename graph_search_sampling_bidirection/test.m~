@@ -1,0 +1,216 @@
+clear all;
+close all;
+
+RowGap = 1;
+ColGap = 1;
+
+ParkLotRowNum = 3;
+ParkLotColNum = 4;
+
+% % map = [1 1 1 0 0 0 1 1 1 1 0 0];%worst case case 1 optimal
+map = [1 0 1 0 0 1 1 1 0 1 0 1];%case 2 better
+% map = [1 1 1 0 1 0 0 1 0 1 0 1];%case 1 better
+
+% map = [1 0 1 1 0 1];%actual map
+% map = [1 1 1 0 0 0];%actual map
+% G = [1 1 0 1 0 0;
+%      1 1 1 0 0 0;
+%      0 1 1 1 0 0;
+%      1 0 1 1 1 0;
+%      0 0 0 1 1 1;
+%      0 0 1 0 1 1];
+% S = 6;
+% [disc, pred, closed] = graphtraverse(sparse(G), S);
+AvailNum = 5;%total avaiable parking spots
+UnAvailNum = ParkLotRowNum*ParkLotColNum - AvailNum;
+
+RowSearchSequence = unique_perms([1:ParkLotRowNum]);
+
+Coordinate = coordinate_generate(ParkLotRowNum, ParkLotColNum, [1,1], 1, 1);
+Coordinate(ParkLotRowNum*ParkLotColNum+1,:) = Coordinate(length(Coordinate(:,1)),:) + [0 1];
+
+for i = 1:length(RowSearchSequence)
+    ExploreSequence(i).RowSequence = RowSearchSequence(i,:);
+end
+
+% ExploreSequence(1).IndexSequence = [7,6,3,2,1,4,3,6,5];
+% ExploreSequence(2).IndexSequence = [7,6,3,2,1,4,5,6,3];
+% ExploreSequence(3).IndexSequence = [7,6,3,4,1,2,3,6,5];
+% ExploreSequence(4).IndexSequence = [7,6,3,4,5,6,3,2,1];
+% ExploreSequence(5).IndexSequence = [7,6,5,4,1,2,3];
+% ExploreSequence(6).IndexSequence = [7,6,5,4,3,2,1];
+
+ExploreSequence(1).IndexSequence = [13,12,5,4,3,2,1,8,7,6,5,12,11,10,9];
+ExploreSequence(2).IndexSequence = [13,12,5,4,3,2,1,8,9,10,11,12,5,6,7];
+ExploreSequence(3).IndexSequence = [13,12,5,6,7,8,1,2,3,4,5,12,11,10,9];
+ExploreSequence(4).IndexSequence = [13,12,5,6,7,8,9,10,11,12,5,4,3,2,1];
+ExploreSequence(5).IndexSequence = [13,12,11,10,9,8,1,2,3,4,5,6,7];
+ExploreSequence(6).IndexSequence = [13,12,11,10,9,8,7,6,5,4,3,2,1];
+
+
+
+for i = 1:length(RowSearchSequence)
+    ExploreSequence(i).map(1) = 1;
+    ExploreSequence(i).Active = 1;
+    ExploreSequence(i).NodeExplored = [ExploreSequence(i).IndexSequence(1)];
+    ExploreSequence(i).Node2Explore = ExploreSequence(i).IndexSequence(2:end);
+    ExploreSequence(i).obsearved = 0;
+    ExploreSequence(i).ActionHistory = [];
+    ExploreSequence(i).CurrentPosition = 1;
+    ExploreSequence(i).flag = 1;
+    ExploreSequence(i).unavailablePosition = [];
+    ExploreSequence(i).obsearvedMap = [];
+    ExploreSequence(i).Map4Planning = MapGenerate(ExploreSequence(i).IndexSequence(2:end),AvailNum,UnAvailNum);
+    for j = 2:length(ExploreSequence(i).IndexSequence)
+        ExploreSequence(i).map(j) = map(ExploreSequence(i).IndexSequence(j));
+    end
+end
+
+velNum = 1;
+
+DriveCost = 1;
+WalkCost = 2;
+
+for i = 1:100
+    ActiveIndex = [];
+    Cost2Compare = [];
+    mmm = 0;
+    for iii = 1:length(RowSearchSequence)
+        if ExploreSequence(iii).Active == 0
+            mmm = mmm + 1;
+        end
+    end
+    if mmm == length(RowSearchSequence)
+        break;
+    end
+    for j = 1:length(RowSearchSequence)
+       
+        if ExploreSequence(j).Active == 1
+            
+            ExploreSequence(j).TotalParkSpotLeft = length(ExploreSequence(j).Node2Explore);
+            if isempty(ExploreSequence(j).obsearvedMap) == 1
+                Map4Planning = ExploreSequence(j).Map4Planning;
+            else
+                Map2PlanningNum = size(ExploreSequence(j).Map4Planning);
+                Map4Planning = [];
+                for s = 1:Map2PlanningNum(1)
+                    if ExploreSequence(j).obsearvedMap == ExploreSequence(j).Map4Planning(s,[1:ExploreSequence(j).CurrentPosition-1])
+                        Map4Planning = [Map4Planning;ExploreSequence(j).Map4Planning(s,:)];
+                    end
+                end
+            end
+            Policy2Evaluate = PolicyGeneration(ExploreSequence(j).CurrentPosition,DriveCost,WalkCost,Coordinate,ExploreSequence(j).IndexSequence);%fix this
+            Map4PlanningNum = size(Map4Planning);
+            Policy2EvaluateNum = size(Policy2Evaluate);
+            Cost2Go = zeros(Map4PlanningNum(1),1);
+            for k = 1:Map4PlanningNum(1)
+                if i == 1
+                    [MinCost,OptimalAction,index] = BestAction([ExploreSequence(j).flag,Map4Planning(k,:)],Policy2Evaluate);
+                else
+                    Map2ComputeBestAction = Map4Planning(k,:);
+                    [MinCost,OptimalAction,index] = BestAction(Map2ComputeBestAction(ExploreSequence(j).CurrentPosition:end),Policy2Evaluate);
+                end
+
+%                 Map2ComputeBestAction = Map4Planning(k,:);
+%                 [MinCost,OptimalAction,index] = BestAction([ExploreSequence(j).flag,Map4Planning(k,:)],Policy2Evaluate);
+                 
+                
+                Cost2Go(k,1) = MinCost;
+            end
+%             ExploreSequence(j).Cost2Go = max(Cost2Go);
+            ExploreSequence(j).Cost2Go = min(Cost2Go);
+            ActiveIndex = [ActiveIndex j];
+            Cost2Compare = [Cost2Compare ExploreSequence(j).Cost2Go];
+        end
+        
+    end
+%     minValue = min(Cost2Compare);
+    minValue = max(Cost2Compare);
+    for ii = 1:length(ActiveIndex)
+        if Cost2Compare(ii) ~= minValue
+            ExploreSequence(ActiveIndex(ii)).Active = 0;
+        end
+    end
+    for jj = 1:length(RowSearchSequence)
+        
+        if ExploreSequence(jj).Active == 1
+            CurrentIndex = ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition);
+            CurrentCost = WalkCost*((Coordinate(CurrentIndex,1) - 1)^2 + (Coordinate(CurrentIndex,2) - 1)^2)^0.5;
+            if ExploreSequence(jj).flag == 1
+                Action = -1;
+%             elseif CurrentCost > ExploreSequence(jj).Cost2Go
+            elseif CurrentCost > minValue
+                Action = -1;
+            else
+                Action = 0;
+            end
+            
+            ExploreSequence(jj).ActionHistory = [ExploreSequence(jj).ActionHistory Action];
+            if Action == 0
+                ExploreSequence(jj).Active = 0;
+                break;
+            else
+                ExploreSequence(jj).CurrentPosition = ExploreSequence(jj).CurrentPosition + 1;
+                ExploreSequence(jj).NodeExplored = [ExploreSequence(jj).NodeExplored ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition)];
+                ExploreSequence(jj).Node2Explore(1) = [];
+            end
+            if ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 1 && ismember(ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition),ExploreSequence(jj).NodeExplored(1:end-1)) == 0
+                ExploreSequence(jj).obsearved = ExploreSequence(jj).obsearved + 1;
+                ExploreSequence(jj).flag = 1;
+                %             ExploreSequence(jj).unavailablePosition = ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition);
+            elseif ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 1 && ismember(ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition),ExploreSequence(jj).NodeExplored(1:end-1)) == 1
+                ExploreSequence(jj).flag = 1;
+            elseif ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 0
+                ExploreSequence(jj).flag = 0;
+            end
+            ExploreSequence(jj).obsearvedMap = [ExploreSequence(jj).obsearvedMap ExploreSequence(jj).flag];
+        end
+        
+    end
+end
+
+
+figure(1)
+title('Parking Spot Search with Algorithm 1','fontsize',14);
+hold on;
+set(gca,'FontSize',14);
+xticks([1 2 3 4 5]);
+yticks([1 2 3]);
+for i = 1:length(map)
+    if map(i) == 0
+        plot(Coordinate(i,2),ParkLotRowNum + 1 - Coordinate(i,1),'o','MarkerSize',20,'MarkerFaceColor','g','MarkerEdgeColor','g');
+        hold on;
+    else
+        plot(Coordinate(i,2),ParkLotRowNum + 1 - Coordinate(i,1),'x','MarkerSize',20,'MarkerEdgeColor','r');
+        hold on;
+    end
+end
+plot(ParkLotColNum + 1,1,'*','MarkerSize',20,'MarkerEdgeColor','b');
+hold on;
+plot(1,ParkLotRowNum,'o','MarkerSize',20,'MarkerEdgeColor','c');
+hold on;
+xlim([0.8 5.1]);
+ylim([0.9 3.1]);
+pause(2);
+for i = 1:length(ExploreSequence)
+    if ismember(0,ExploreSequence(i).ActionHistory)
+        break;
+    end
+end
+
+for k = 1:length(ExploreSequence(i).NodeExplored)-1
+    if k == 1 && length(ExploreSequence(i).NodeExplored) - 1 == 1
+        pause(1);
+        plot(Coordinate(ExploreSequence(i).NodeExplored(k+1),2),ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k+1),1),'*','MarkerSize',20,'MarkerEdgeColor','b');
+        line([ParkLotColNum + 1,Coordinate(ExploreSequence(i).NodeExplored(k+1),2)],[1,ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k+1),1)],'LineWidth',3);
+    elseif k == 1 && length(ExploreSequence(i).NodeExplored) > 2 
+        line([ParkLotColNum + 1,Coordinate(ExploreSequence(i).NodeExplored(k+1),2)],[1,ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k+1),1)],'LineWidth',3);
+    elseif k ~= length(ExploreSequence(i).NodeExplored)-1
+        line([Coordinate(ExploreSequence(i).NodeExplored(k),2),Coordinate(ExploreSequence(i).NodeExplored(k+1),2)],[ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k),1),ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k+1),1)],'LineWidth',3);
+    else
+        plot(Coordinate(ExploreSequence(i).NodeExplored(k+1),2),ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k+1),1),'*','MarkerSize',20,'MarkerEdgeColor','b');
+        line([Coordinate(ExploreSequence(i).NodeExplored(k),2),Coordinate(ExploreSequence(i).NodeExplored(k+1),2)],[ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k),1),ParkLotRowNum + 1 - Coordinate(ExploreSequence(i).NodeExplored(k+1),1)],'LineWidth',3);
+    end
+    pause(1);
+end
+

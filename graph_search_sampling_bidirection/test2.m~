@@ -1,0 +1,155 @@
+clear all;
+close all;
+
+RowGap = 1;
+ColGap = 1;
+
+ParkLotRowNum = 3;
+ParkLotColNum = 2;
+
+% map = [1 0 1 0 0 1 1 1 0 1 0 1];%actual map
+% map = [1 0 1 1 0 1];%actual map
+map = [1 1 1 0 0 0];%actual map
+
+AvailNum = 3;%total avaiable parking spots
+UnAvailNum = ParkLotRowNum*ParkLotColNum - AvailNum;
+
+AvailNumLeft = AvailNum;
+UnAvailNumLeft = UnAvailNum;
+
+
+
+RowSearchSequence = unique_perms([1:ParkLotRowNum]);
+
+Coordinate = coordinate_generate(ParkLotRowNum, ParkLotColNum, [1,1], 1, 1);
+Coordinate(ParkLotRowNum*ParkLotColNum+1,:) = Coordinate(length(Coordinate(:,1)),:) + [0 1];
+
+for i = 1:length(RowSearchSequence)
+    ExploreSequence(i).RowSequence = RowSearchSequence(i,:);
+end
+
+ExploreSequence(1).IndexSequence = [7,6,3,2,1,4,3,6,5];
+ExploreSequence(2).IndexSequence = [7,6,3,2,1,4,5,6,3];
+ExploreSequence(3).IndexSequence = [7,6,3,4,1,2,3,6,5];
+ExploreSequence(4).IndexSequence = [7,6,3,4,5,6,3,2,1];
+ExploreSequence(5).IndexSequence = [7,6,5,4,1,2,3];
+ExploreSequence(6).IndexSequence = [7,6,5,4,3,2,1];
+
+% ExploreSequence(1).IndexSequence = [13,12,5,4,3,2,1,8,7,6,5,12,11,10,9];
+% ExploreSequence(2).IndexSequence = [13,12,5,4,3,2,1,8,9,10,11,12,5,6,7];
+% ExploreSequence(3).IndexSequence = [13,12,5,6,7,8,1,2,3,4,5,12,11,10,9];
+% ExploreSequence(4).IndexSequence = [13,12,5,6,7,8,9,10,11,12,5,4,3,2,1];
+% ExploreSequence(5).IndexSequence = [13,12,11,10,9,8,1,2,3,4,5,6,7];
+% ExploreSequence(6).IndexSequence = [13,12,11,10,9,8,7,6,5,4,3,2,1];
+
+
+
+for i = 1:length(RowSearchSequence)
+    ExploreSequence(i).map(1) = 1;
+    ExploreSequence(i).Active = 1;
+    ExploreSequence(i).NodeExplored = [ExploreSequence(i).IndexSequence(1)];
+    ExploreSequence(i).Node2Explore = ExploreSequence(i).IndexSequence(2:end);
+    ExploreSequence(i).obsearved = 0;
+    ExploreSequence(i).ActionHistory = [];
+    ExploreSequence(i).CurrentPosition = 1;
+    ExploreSequence(i).flag = 1;
+    ExploreSequence(i).unavailablePosition = [];
+    ExploreSequence(i).obsearvedMap = [];
+    ExploreSequence(i).Map4Planning = MapGenerate(ExploreSequence(i).IndexSequence(2:end),AvailNum,UnAvailNum);
+    for j = 2:length(ExploreSequence(i).IndexSequence)
+        ExploreSequence(i).map(j) = map(ExploreSequence(i).IndexSequence(j));
+    end
+    
+end
+
+velNum = 1;
+
+DriveCost = 1;
+WalkCost = 2;
+
+for i = 1:100
+    
+    mmm = 0;
+    for iii = 1:length(RowSearchSequence)
+        if ExploreSequence(iii).Active == 0
+            mmm = mmm + 1;
+        end
+    end
+    if mmm == length(RowSearchSequence)
+        break;
+    end
+   
+
+    
+    allPossibleMap = unique_perms([zeros(1,AvailNumLeft),ones(1,UnAvailNumLeft)]);
+    
+    allPossibleMapNum = size(allPossibleMap);
+    cost2go = 10000*ones(allPossibleMapNum(1),1);
+    NextNodeIndex = zeros(allPossibleMapNum(1),1);
+    for j = 1:allPossibleMapNum(1)
+        for kk = 1:length(RowSearchSequence)
+            if ExploreSequence(kk).Active == 1
+                map2see = map2seeGenerate(allPossibleMap(j,:),ExploreSequence(kk).IndexSequence(ExploreSequence(kk).CurrentPosition:end));
+                Policy2Evaluate = PolicyGeneration(ExploreSequence(kk).CurrentPosition,DriveCost,WalkCost,Coordinate,ExploreSequence(kk).IndexSequence);
+                [MinCost,OptimalAction,index] = BestAction(map2see,Policy2Evaluate);
+                if MinCost < cost2go(j)
+                    cost2go(j) = MinCost;
+                    NextNode(j) = ExploreSequence(kk).IndexSequence(ExploreSequence(kk).CurrentPosition+1);
+                end
+            end
+        end
+    end
+    [MaxCost2Go,MaxIndex] = max(cost2go);
+    MaxNextNode = NextNode(MaxIndex(1));
+    
+    
+    for ii = 1:length(RowSearchSequence)
+        for mm = 1:length(MaxNextNode)
+            if ExploreSequence(ii).IndexSequence(ExploreSequence(ii).CurrentPosition+1) ~= MaxNextNode(mm)
+                ExploreSequence(ii).Active = 0;
+            end
+        end
+    end
+
+    
+    for jj = 1:length(RowSearchSequence)
+        
+        if ExploreSequence(jj).Active == 1
+            CurrentIndex = ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition);
+            CurrentCost = WalkCost*((Coordinate(CurrentIndex,1) - 1)^2 + (Coordinate(CurrentIndex,2) - 1)^2)^0.5;
+            if ExploreSequence(jj).flag == 1
+                Action = -1;
+%             elseif CurrentCost > ExploreSequence(jj).Cost2Go
+            elseif CurrentCost > MaxCost2Go
+                Action = -1;
+            else
+                Action = 0;
+            end
+            
+            ExploreSequence(jj).ActionHistory = [ExploreSequence(jj).ActionHistory Action];
+            if Action == 0
+                ExploreSequence(jj).Active = 0;
+                break;
+            else
+                ExploreSequence(jj).CurrentPosition = ExploreSequence(jj).CurrentPosition + 1;
+                ExploreSequence(jj).NodeExplored = [ExploreSequence(jj).NodeExplored ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition)];
+                ExploreSequence(jj).Node2Explore(1) = [];
+            end
+            if ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 1 && ismember(ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition),ExploreSequence(jj).NodeExplored(1:end-1)) == 0
+                ExploreSequence(jj).obsearved = ExploreSequence(jj).obsearved + 1;
+                ExploreSequence(jj).flag = 1;
+                ExploreSequence(jj).UnAvailNumLeft = ExploreSequence(jj).UnAvailNumLeft - 1;
+                
+            elseif ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 1 && ismember(ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition),ExploreSequence(jj).NodeExplored(1:end-1)) == 1
+                ExploreSequence(jj).flag = 1;
+            elseif ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 0 && ismember(ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition),ExploreSequence(jj).NodeExplored(1:end-1)) == 0
+                ExploreSequence(jj).flag = 0;
+                ExploreSequence(jj).AvailNumLeft = ExploreSequence(jj).AvailNumLeft - 1;
+            elseif ExploreSequence(jj).map(1, ExploreSequence(jj).CurrentPosition) == 0 && ismember(ExploreSequence(jj).IndexSequence(ExploreSequence(jj).CurrentPosition),ExploreSequence(jj).NodeExplored(1:end-1)) == 1
+                ExploreSequence(jj).flag = 0;
+            end
+            ExploreSequence(jj).obsearvedMap = [ExploreSequence(jj).obsearvedMap ExploreSequence(jj).flag];
+        end
+        
+    end
+end
